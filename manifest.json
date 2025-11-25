@@ -1,6 +1,6 @@
 {
-  "name": "LUKMAN.AI",
-  "short_name": "LUKMAN.AI",
+  "name": "LUKMAN",
+  "short_name": "LUKMAN",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
