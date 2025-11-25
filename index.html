@@ -1,20 +1,321 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="description" content="AI Intelligence Dashboard" />
-    
-    <!-- ADD THIS LINE -->
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="description" content="AI Intelligence Dashboard">
     <title>LUKMAN.AI</title>
-  </head>
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-  </body>
+    
+    <link rel="manifest" href="manifest.json">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="min-h-screen bg-white text-gray-800 font-sans selection:bg-black selection:text-white">
+
+    <header class="sticky top-0 z-50 bg-white/95 border-b border-gray-200 backdrop-blur-sm">
+        <div class="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-black tracking-tight font-bold select-none cursor-pointer" onclick="app.setActiveCategory('openai')">
+                <i data-lucide="zap" class="text-black w-5 h-5"></i>
+                <span class="hidden sm:inline">LUKMAN.AI</span>
+            </div>
+
+            <nav id="desktop-nav" class="hidden md:flex gap-8 text-sm font-medium"></nav>
+
+            <div class="flex items-center gap-4">
+                <div id="status-indicator"></div>
+                <button onclick="app.manualRefresh()" id="refresh-btn" class="transition-colors text-gray-400 hover:text-black" title="Refresh">
+                    <i data-lucide="refresh-cw" class="w-[18px] h-[18px]"></i>
+                </button>
+                <button class="md:hidden text-gray-500" onclick="app.toggleMobileMenu()">
+                    <i id="menu-icon" data-lucide="menu" class="w-6 h-6"></i>
+                </button>
+            </div>
+        </div>
+
+        <div id="mobile-menu" class="hidden md:hidden border-t border-gray-100 bg-white shadow-lg absolute w-full left-0 top-16"></div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 py-12">
+        <div class="mb-12 flex items-baseline justify-between border-b border-gray-200 pb-4">
+            <h2 id="category-title" class="text-3xl md:text-4xl font-bold text-black tracking-tight"></h2>
+            <span id="last-updated" class="font-mono text-xs text-gray-400 uppercase tracking-wider hidden sm:inline"></span>
+        </div>
+
+        <div id="error-container" class="hidden mb-8 p-4 border border-red-200 bg-red-50 text-red-600 text-sm rounded-lg flex items-center gap-2"></div>
+
+        <div id="news-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-16"></div>
+    </main>
+
+    <script>
+        // --- CONFIGURATION ---
+        const RSS_TO_JSON_API = "https://api.rss2json.com/v1/api.json?rss_url=";
+        const REFRESH_INTERVAL_MS = 300000; // 5 Minutes
+        const CATEGORIES = [
+            { id: 'openai', name: 'OpenAI', url: 'https://news.google.com/rss/search?q=OpenAI+ChatGPT+OR+Sam+Altman&hl=en-US&gl=US&ceid=US:en' },
+            { id: 'google', name: 'DeepMind', url: 'https://news.google.com/rss/search?q=Google+DeepMind+OR+Gemini+AI+OR+Sundar+Pichai&hl=en-US&gl=US&ceid=US:en' },
+            { id: 'grok', name: 'Grok / xAI', url: 'https://news.google.com/rss/search?q=xAI+Grok+OR+Elon+Musk+AI&hl=en-US&gl=US&ceid=US:en' },
+            { id: 'anthropic', name: 'Anthropic', url: 'https://news.google.com/rss/search?q=Anthropic+Claude+AI&hl=en-US&gl=US&ceid=US:en' },
+            { id: 'meta', name: 'Meta AI', url: 'https://news.google.com/rss/search?q=Meta+AI+Llama+Mark+Zuckerberg&hl=en-US&gl=US&ceid=US:en' },
+            { id: 'community', name: 'Community', url: 'https://news.google.com/rss/search?q=AI+Community+Discussion+OR+AI+Twitter+Drama&hl=en-US&gl=US&ceid=US:en' }
+        ];
+
+        // --- APP LOGIC ---
+        const app = {
+            state: {
+                activeCategory: 'openai',
+                news: [],
+                loading: true,
+                error: null,
+                lastUpdated: new Date(),
+                isMobileMenuOpen: false,
+                isOffline: !navigator.onLine,
+                refreshTimer: null
+            },
+
+            init() {
+                this.registerServiceWorker();
+                this.setupNetworkListeners();
+                this.setupVisibilityListeners(); // NEW: Smart polling
+                this.renderNav();
+                this.fetchNews();
+                this.startPolling();
+            },
+
+            registerServiceWorker() {
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('sw.js')
+                        .then(() => console.log('SW registered'))
+                        .catch(err => console.log('SW failed', err));
+                }
+            },
+
+            setupNetworkListeners() {
+                window.addEventListener('online', () => {
+                    this.state.isOffline = false;
+                    this.renderStatus();
+                    this.fetchNews(); 
+                });
+                window.addEventListener('offline', () => {
+                    this.state.isOffline = true;
+                    this.renderStatus();
+                    this.renderError("You are offline. Showing cached content.");
+                });
+            },
+
+            // NEW: Only refresh when tab is visible to save API calls
+            setupVisibilityListeners() {
+                document.addEventListener("visibilitychange", () => {
+                    if (document.hidden) {
+                        this.stopPolling();
+                    } else {
+                        // If it's been a while, fetch immediately on return
+                        this.fetchNews();
+                        this.startPolling();
+                    }
+                });
+            },
+
+            startPolling() {
+                if (this.state.refreshTimer) clearInterval(this.state.refreshTimer);
+                this.state.refreshTimer = setInterval(() => {
+                    if (!this.state.isOffline) this.fetchNews();
+                }, REFRESH_INTERVAL_MS);
+            },
+
+            stopPolling() {
+                if (this.state.refreshTimer) clearInterval(this.state.refreshTimer);
+            },
+
+            setActiveCategory(id) {
+                this.state.activeCategory = id;
+                this.state.isMobileMenuOpen = false;
+                this.renderNav();
+                this.fetchNews();
+            },
+
+            toggleMobileMenu() {
+                this.state.isMobileMenuOpen = !this.state.isMobileMenuOpen;
+                this.renderNav();
+            },
+
+            manualRefresh() {
+                this.fetchNews();
+            },
+
+            async fetchNews() {
+                this.state.loading = true;
+                this.state.error = null;
+                this.renderUI();
+
+                if (this.state.isOffline) {
+                    this.state.loading = false;
+                    this.renderUI();
+                    return;
+                }
+
+                try {
+                    const category = CATEGORIES.find(c => c.id === this.state.activeCategory);
+                    const cacheBuster = `&t=${new Date().getTime()}`; // Prevent browser caching of API call
+                    const response = await fetch(`${RSS_TO_JSON_API}${encodeURIComponent(category.url)}${cacheBuster}`);
+                    const data = await response.json();
+
+                    if (data.status === 'ok') {
+                        this.state.news = data.items;
+                        this.state.lastUpdated = new Date();
+                    } else {
+                        throw new Error(data.message || "Failed to load feed");
+                    }
+                } catch (err) {
+                    console.error("Fetch error:", err);
+                    this.state.error = "Could not fetch fresh news. Check connection.";
+                } finally {
+                    this.state.loading = false;
+                    this.renderUI();
+                }
+            },
+
+            // --- RENDERING ---
+            renderUI() {
+                this.renderStatus();
+                this.renderNav();
+                this.renderMainContent();
+                lucide.createIcons();
+            },
+
+            renderStatus() {
+                const container = document.getElementById('status-indicator');
+                if (this.state.isOffline) {
+                    container.innerHTML = `<div class="flex items-center gap-2 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded"><i data-lucide="wifi-off" class="w-3.5 h-3.5"></i> OFFLINE</div>`;
+                } else {
+                    container.innerHTML = `<div class="hidden md:flex items-center gap-2 text-xs font-medium text-gray-500"><div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>LIVE</div>`;
+                }
+
+                const refreshBtn = document.getElementById('refresh-btn');
+                if (this.state.loading) refreshBtn.classList.add('animate-spin', 'text-black');
+                else refreshBtn.classList.remove('animate-spin', 'text-black');
+            },
+
+            renderNav() {
+                const desktopNav = document.getElementById('desktop-nav');
+                desktopNav.innerHTML = CATEGORIES.map(cat => `
+                    <button onclick="app.setActiveCategory('${cat.id}')" class="transition-colors duration-200 pb-1 border-b-2 ${this.state.activeCategory === cat.id ? 'text-black border-black' : 'text-gray-500 border-transparent hover:text-black'}">${cat.name}</button>
+                `).join('');
+
+                const mobileMenu = document.getElementById('mobile-menu');
+                const menuIcon = document.getElementById('menu-icon');
+                
+                if (this.state.isMobileMenuOpen) {
+                    mobileMenu.classList.remove('hidden');
+                    menuIcon.setAttribute('data-lucide', 'x');
+                } else {
+                    mobileMenu.classList.add('hidden');
+                    menuIcon.setAttribute('data-lucide', 'menu');
+                }
+
+                mobileMenu.innerHTML = CATEGORIES.map(cat => `
+                    <button onclick="app.setActiveCategory('${cat.id}')" class="block w-full text-left px-6 py-4 text-sm font-medium ${this.state.activeCategory === cat.id ? 'bg-gray-50 text-black' : 'text-gray-600'}">${cat.name}</button>
+                `).join('');
+                lucide.createIcons();
+            },
+
+            renderMainContent() {
+                const category = CATEGORIES.find(c => c.id === this.state.activeCategory);
+                document.getElementById('category-title').textContent = category.name;
+                
+                const timeStr = this.state.lastUpdated.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                document.getElementById('last-updated').textContent = `UPDATED ${timeStr}`;
+
+                const errorContainer = document.getElementById('error-container');
+                if (this.state.error) {
+                    errorContainer.classList.remove('hidden');
+                    errorContainer.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4"></i> ${this.state.error}`;
+                } else {
+                    errorContainer.classList.add('hidden');
+                }
+
+                const grid = document.getElementById('news-grid');
+                if (this.state.loading && this.state.news.length === 0) {
+                    grid.innerHTML = this.getSkeletonLoader();
+                    return;
+                }
+
+                if (!this.state.loading && this.state.news.length === 0) {
+                    grid.innerHTML = `<div class="col-span-full py-24 text-center"><p class="text-gray-500">No updates found.</p></div>`;
+                    return;
+                }
+
+                grid.innerHTML = this.state.news.map(item => this.createNewsCard(item)).join('');
+            },
+
+            createNewsCard(item) {
+                const cleanDesc = this.cleanText(item.description).substring(0, 140) + '...';
+                const cleanTitle = this.cleanText(item.title);
+                const date = this.formatDate(item.pubDate);
+                const author = item.author || 'News Source';
+                
+                const imgHTML = item.thumbnail 
+                    ? `<div class="mb-5 overflow-hidden rounded-lg bg-gray-100 aspect-video border border-gray-100">
+                        <img src="${item.thumbnail}" alt="" class="w-full h-full object-cover transition-transform duration-700 hover:scale-105" onerror="this.style.display='none'">
+                       </div>`
+                    : '';
+
+                return `
+                <article class="group flex flex-col h-full">
+                    ${imgHTML}
+                    <div class="flex items-center justify-between text-xs font-bold text-gray-400 mb-3 uppercase tracking-wide">
+                        <span>${author}</span>
+                        <span>${date}</span>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-3 leading-tight group-hover:text-blue-600 transition-colors">
+                        <a href="${item.link}" target="_blank" rel="noopener noreferrer">${cleanTitle}</a>
+                    </h3>
+                    <p class="text-base text-gray-600 line-clamp-3 mb-5 flex-1 leading-relaxed">${cleanDesc}</p>
+                    <a href="${item.link}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 text-sm font-bold text-black group-hover:text-blue-600 transition-colors mt-auto">
+                        Read Story <i data-lucide="arrow-up-right" class="w-4 h-4"></i>
+                    </a>
+                </article>`;
+            },
+
+            getSkeletonLoader() {
+                return [...Array(6)].map(() => `
+                    <div class="animate-pulse">
+                        <div class="h-48 bg-gray-200 rounded-lg mb-5"></div>
+                        <div class="h-6 bg-gray-200 w-3/4 rounded mb-3"></div>
+                        <div class="h-4 bg-gray-200 w-full rounded mb-2"></div>
+                        <div class="h-4 bg-gray-200 w-2/3 rounded"></div>
+                    </div>`).join('');
+            },
+
+            cleanText(html) {
+                if (!html) return "";
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                return doc.body.textContent || "";
+            },
+
+            formatDate(dateStr) {
+                try {
+                    const diff = Math.floor((new Date() - new Date(dateStr)) / 1000);
+                    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+                    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+                    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                } catch (e) { return ""; }
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => app.init());
+    </script>
+</body>
 </html>
