@@ -2,17 +2,17 @@
   "short_name": "LUKMAN.AI",
   "name": "LUKMAN.AI Intelligence Dashboard",
   "icons": [
-    {
-      "src": "icon-192.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "icon-512.png",
-      "type": "image/png",
-      "sizes": "512x512"
-    }
-  ],
+  {
+    "src": "https://cdn-icons-png.flaticon.com/512/6134/6134346.png",
+    "type": "image/png",
+    "sizes": "192x192"
+  },
+  {
+    "src": "https://cdn-icons-png.flaticon.com/512/6134/6134346.png",
+    "type": "image/png",
+    "sizes": "512x512"
+  }
+],
   "start_url": ".",
   "display": "standalone",
   "theme_color": "#000000",
