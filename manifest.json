@@ -1,20 +1,23 @@
 {
+  "name": "LUKMAN.AI",
   "short_name": "LUKMAN.AI",
-  "name": "LUKMAN.AI Intelligence Dashboard",
-  "icons": [
-  {
-    "src": "https://cdn-icons-png.flaticon.com/512/6134/6134346.png",
-    "type": "image/png",
-    "sizes": "192x192"
-  },
-  {
-    "src": "https://cdn-icons-png.flaticon.com/512/6134/6134346.png",
-    "type": "image/png",
-    "sizes": "512x512"
-  }
-],
-  "start_url": ".",
+  "start_url": "./index.html",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#000000"
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2814/2814666.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2814/2814666.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
 }
