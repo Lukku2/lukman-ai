@@ -1,55 +1,71 @@
-const CACHE_NAME = 'lukman-ai-v1';
-const URLS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/manifest.json'
+const CACHE_NAME = 'lukman-ai-v2';
+const ASSETS_TO_CACHE = [
+  './',
+  './index.html',
+  './manifest.json',
+  'https://cdn.tailwindcss.com',
+  'https://unpkg.com/lucide@latest'
 ];
 
-// Install SW and cache static assets
+// 1. Install Event: Cache App Shell
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(URLS_TO_CACHE))
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(ASSETS_TO_CACHE);
+    })
   );
 });
 
-// Fetch strategy: Network First, Fallback to Cache (Ideal for News)
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // If response is valid, clone it and store in cache for later
-        if (!response || response.status !== 200 || response.type !== 'basic') {
-          return response;
-        }
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME)
-          .then((cache) => {
-            // Only cache requests that are not from the API (or handle API separately)
-            // For this simple PWA, we cache everything to allow offline viewing
-            cache.put(event.request, responseToCache);
-          });
-        return response;
-      })
-      .catch(() => {
-        // If network fails, try to serve from cache
-        return caches.match(event.request);
-      })
-  );
-});
-
-// Clean up old caches
+// 2. Activate Event: Clean up old caches
 self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            return caches.delete(cacheName);
-          }
+    caches.keys().then((keyList) => {
+      return Promise.all(keyList.map((key) => {
+        if (key !== CACHE_NAME) return caches.delete(key);
+      }));
+    })
+  );
+  return self.clients.claim();
+});
+
+// 3. Fetch Event: Network First strategy
+self.addEventListener('fetch', (event) => {
+  // We only care about GET requests
+  if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+
+  // STRATEGY 1: Network First (for API calls to get fresh news)
+  if (url.href.includes('api.rss2json.com')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          // If successful network fetch, cache it for later offline use
+          const clonedResponse = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, clonedResponse);
+          });
+          return response;
         })
-      );
+        .catch(() => {
+          // If network fails (offline), return cached news
+          return caches.match(event.request);
+        })
+    );
+    return;
+  }
+
+  // STRATEGY 2: Stale-While-Revalidate (for App Shell/UI assets)
+  // This ensures the app loads instantly from cache, then updates in background
+  event.respondWith(
+    caches.match(event.request).then((cachedResponse) => {
+      const fetchPromise = fetch(event.request).then((networkResponse) => {
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, networkResponse.clone());
+        });
+        return networkResponse;
+      });
+      return cachedResponse || fetchPromise;
     })
   );
 });
